@@ -22,3 +22,6 @@ usage:
 test:
 
   dig @nameserver.com example.com
+
+  If geoip support is enabled the ip address should change based
+  on clients location

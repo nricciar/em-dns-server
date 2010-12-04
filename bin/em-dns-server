@@ -11,15 +11,19 @@ end
 
 if ARGV.any? { |arg| %w(--update-geoip-data -u).any? { |flag| arg == flag } }
   puts "Downloading http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz"
-  Net::HTTP.start("geolite.maxmind.com") { |http|
-    resp = http.get("/download/geoip/database/GeoLiteCity.dat.gz")
-    open(DNSServer.geoip_data_path+".gz", "wb") { |file|
-      file.write(resp.body)
-     }
-     command = "gunzip --force #{DNSServer.geoip_data_path}.gz"
-     system(command)
-  }
-  puts "Download Complete."
+  begin
+    Net::HTTP.start("geolite.maxmind.com") { |http|
+      resp = http.get("/download/geoip/database/GeoLiteCity.dat.gz")
+      open(DNSServer.geoip_data_path+".gz", "wb") { |file|
+        file.write(resp.body)
+       }
+       command = "gunzip --force #{DNSServer.geoip_data_path}.gz"
+       system(command)
+    }
+    puts "Download Complete."
+  rescue
+    puts "Failed to download file."
+  end
   exit 0
 end
 

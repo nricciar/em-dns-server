@@ -11,7 +11,7 @@ module DNSServer
 
   PLUGIN_PATH = File.join(File.dirname(__FILE__),'..')
   RAD_PER_DEG = 0.017453293
-  VERSION = "0.1.0"
+  VERSION = "0.1.2"
   
   @@GEOIP = nil
   @@ZONEMAP = {}
