@@ -1,0 +1,21 @@
+#!/usr/bin/env ruby
+require 'rubygems'
+require 'eventmachine'
+require 'dnsruby'
+require 'geoip'
+require 'daemons'
+require File.join(File.dirname(__FILE__),'../lib/em-dns-server')
+
+pwd = File.expand_path(File.join(File.dirname(File.expand_path(__FILE__)),".."))
+
+Daemons.run_proc('em-dns-server', :log_output => true) do
+
+  Dir.chdir pwd
+  DNSServer.init
+
+  EM.run do
+    EM.start_server "0.0.0.0", 53, DNSServer
+    EM.open_datagram_socket '0.0.0.0', 53, DNSServer
+  end
+
+end

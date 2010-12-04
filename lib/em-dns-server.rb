@@ -1,8 +1,3 @@
-require 'rubygems'
-require 'eventmachine'
-require 'dnsruby'
-require 'geoip'
-
 module DNSServer
 
   RAD_PER_DEG = 0.017453293
@@ -119,11 +114,4 @@ module DNSServer
   class DnsRedirect < Exception
   end
 
-end
-
-DNSServer.init
-
-EM.run do
-  EM.start_server "0.0.0.0", 53, DNSServer
-  EM.open_datagram_socket '0.0.0.0', 53, DNSServer
 end

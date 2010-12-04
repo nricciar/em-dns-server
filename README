@@ -1,14 +1,15 @@
 A simple dns server using eventmachine.  It is pretty bare bones and is probably not very useful.
 
 required gems:
+  daemons
   eventmachine
   dnsruby
   geoip
 
 usage:
 
-  1) download http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz into the same directory as server.rb and unzip it
-  2) ruby server.rb
+  1) download http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz into the base directory and unzip it
+  2) ./bin/em-dns-server start
 
 test:
 
