@@ -45,7 +45,7 @@ module DNSServer
         zone_records.each do |rr|
           if rr[1] == query.to_s && rr[4] == question.qclass.to_s && rr[5] == question.qtype.to_s
             rr_geo = @@GEOIP.country(rr.last)
-            distance = rr_geo.nil? ? 0 : haversine_distance(geoip_data[9],geoip_data[10],rr_geo[9],rr_geo[10])["mi"]
+            distance = rr_geo.nil? ? 0 : haversine_distance(geoip_data[9],geoip_data[10],rr_geo[9],rr_geo[10])["mi"].to_i
             if match_record.nil? || match_distance.nil? || match_distance > distance
               match_distance = distance
               match_record = rr[0]

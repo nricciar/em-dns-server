@@ -12,6 +12,6 @@ usage:
 
 test:
 
-  dig @localhost example.com
+  dig @nameserver.com example.com
 
   response will change based on the clients location
