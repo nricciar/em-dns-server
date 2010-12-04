@@ -1,18 +1,24 @@
-A simple dns server using eventmachine.  It is pretty bare bones and is probably not very useful.
+EventMachine based DNS server with support for location based responses.
+It is pretty bare bones and is probably not very useful.
 
 required gems:
+
   daemons
   eventmachine
   dnsruby
+
+optional gems:
+
   geoip
+
+  use em-dns-server -u to download the latest geoip data file
+  once the file has been downloaded support for location based
+  responces will be enabled
 
 usage:
 
-  1) download http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz into the base directory and unzip it
-  2) ./bin/em-dns-server start
+  em-dns-server start|stop|run|status
 
 test:
 
   dig @nameserver.com example.com
-
-  response will change based on the clients location

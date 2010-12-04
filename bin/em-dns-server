@@ -1,19 +1,35 @@
 #!/usr/bin/env ruby
 require 'rubygems'
-require 'eventmachine'
-require 'dnsruby'
-require 'geoip'
-require 'daemons'
-require File.join(File.dirname(__FILE__),'../lib/em-dns-server')
+require 'em-dns-server'
+require 'net/http'
+require 'fileutils'
 
-pwd = File.expand_path(File.join(File.dirname(File.expand_path(__FILE__)),".."))
+if ARGV.any? { |arg| %w(--version -v).any? { |flag| arg == flag } }
+  puts "em-dns-server #{DNSServer::VERSION}"
+  exit 0
+end
+
+if ARGV.any? { |arg| %w(--update-geoip-data -u).any? { |flag| arg == flag } }
+  puts "Downloading http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz"
+  Net::HTTP.start("geolite.maxmind.com") { |http|
+    resp = http.get("/download/geoip/database/GeoLiteCity.dat.gz")
+    open(DNSServer.geoip_data_path+".gz", "wb") { |file|
+      file.write(resp.body)
+     }
+     command = "gunzip --force #{DNSServer.geoip_data_path}.gz"
+     system(command)
+  }
+  puts "Download Complete."
+  exit 0
+end
 
 Daemons.run_proc('em-dns-server', :log_output => true) do
 
-  Dir.chdir pwd
+  Dir.chdir DNSServer::PLUGIN_PATH
   DNSServer.init
 
   EM.run do
+    EM.epoll
     EM.start_server "0.0.0.0", 53, DNSServer
     EM.open_datagram_socket '0.0.0.0', 53, DNSServer
   end
