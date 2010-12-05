@@ -1,6 +1,7 @@
 require 'eventmachine'
 require 'dnsruby'
 require 'daemons'
+require 'resolv'
 begin
   require 'geoip'
 rescue LoadError
@@ -49,60 +50,8 @@ module DNSServer
       client_ip = get_peername[2,6].unpack("nC4")[1,4].join(".")
       geoip_data = @@GEOIP.country(client_ip) if DNSServer.geoip_enabled?
 
-      domain = nil
-      zone_records = []
-
       msg.question.each do |question|
-        query = question.qname.to_s
-
-        # load the zone information for the current question
-        @@ZONEMAP.each { |key,value| domain = key if query =~ /#{key}$/ }
-        zone_records = @@ZONEMAP[domain] unless domain.nil?
-
-        begin
-          puts "Q: #{query}"
-          query.gsub!(/#{domain}/,"")
-          query = query == "" ? "@" : query.chomp(".")
-
-          match_distance = nil
-          match_record = nil
-          match_address = nil
-
-          zone_records.each do |rr|
-            if rr[1] == query.to_s && rr[4] == question.qclass.to_s && rr[5] == question.qtype.to_s
-              if DNSServer.geoip_enabled?
-                # get the location information for the current record
-                rr_geo = @@GEOIP.country(rr.last)
-                distance = rr_geo.nil? ? 0 : haversine_distance(geoip_data[9],geoip_data[10],rr_geo[9],rr_geo[10])["mi"].to_i
-
-                # if this is the first match or if we have found a match closer
-                # to the client
-                if match_record.nil? || match_distance.nil? || match_distance > distance
-                  match_distance = distance
-                  match_record = rr[0]
-                  match_address = rr.last
-                end
-              else
-                # go ahead and add to response if geoip based responses are disabled
-                msg.add_answer(Dnsruby::RR.create(rr[0].gsub(/@/,domain)))
-                puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{rr.last}"
-              end
-            elsif rr[1] == query && rr[5] == "CNAME" && question.qtype == "A"
-              # add the CNAME to our response, and then attempt to resolve the record
-              msg.add_answer(Dnsruby::RR.create(rr[0].gsub(/@/,domain)))
-              raise DnsRedirect, rr.last
-            end
-          end
-          unless match_record.nil?
-            # the final result for the current question
-            msg.add_answer(Dnsruby::RR.create(match_record.gsub(/@/,domain)))
-            puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{match_address} -- Distance: #{match_distance}"
-          end
-        rescue DnsRedirect => redirect
-          query = redirect.message
-          query += ".#{domain}" if query[-1,1] != "."
-          retry
-        end
+        resolv(question,msg,geoip_data)
       end
     end
 
@@ -117,6 +66,71 @@ module DNSServer
   end
 
   protected
+  def resolv(question,msg,geoip_data=nil)
+    success = false
+    query = question.qname.to_s
+    domain = nil
+    zone_records = []
+
+    # load the zone information for the current question
+    @@ZONEMAP.each { |key,value| domain = key if query =~ /#{key}$/ }
+    zone_records = @@ZONEMAP[domain] unless domain.nil?
+
+    begin
+      puts "Q: #{query}"
+      query.gsub!(/#{domain}\.|#{domain}/,"")
+      query = query == "" ? "@" : query.chomp(".")
+      puts "Q: #{query}"
+
+      match_distance = nil
+      match_record = nil
+      match_address = nil
+
+      zone_records.each do |rr|
+        if rr[1] == query.to_s && rr[4] == question.qclass.to_s && rr[5] == question.qtype.to_s
+          if DNSServer.geoip_enabled?
+            # get the location information for the current record
+            rr_geo = @@GEOIP.country(rr.last)
+            distance = rr_geo.nil? ? 0 : haversine_distance(geoip_data[9],geoip_data[10],
+		rr_geo[9],rr_geo[10])["mi"].to_i
+
+            # if this is the first match or if we have found a match closer
+            # to the client
+            if match_record.nil? || match_distance.nil? || match_distance > distance
+              match_distance = distance
+              match_record = rr[0]
+              match_address = rr.last
+            end
+          else
+            # go ahead and add to response if geoip based responses are disabled
+            msg.add_answer(Dnsruby::RR.create(rr[0].gsub(/@/,domain)))
+            puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{rr.last}"
+            success = true
+          end
+        elsif rr[1] == query && rr[5] == "CNAME" && question.qtype == "A"
+          # add the CNAME to our response, and then attempt to resolve the record
+          msg.add_answer(Dnsruby::RR.create(rr[0].gsub(/@/,domain)))
+          raise DnsRedirect, rr.last
+        end
+      end
+      unless match_record.nil?
+        # the final result for the current question
+        msg.add_answer(Dnsruby::RR.create(match_record.gsub(/@/,domain)))
+        puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{match_address} -- Distance: #{match_distance}"
+        success = true
+      end
+    rescue DnsRedirect => redirect
+      query = redirect.message
+      query += ".#{domain}" if query[-1,1] != "."
+      retry
+    end
+    if success == true
+      zone_records.each do |rr|
+        msg.add_authority(Dnsruby::RR.create(rr[0].gsub(/@/,domain))) if rr[5] == "NS"
+      end
+    end
+  end
+
   # mostly taken from http://www.codecodex.com/wiki/Calculate_distance_between_two_points_on_a_globe#Ruby
   def haversine_distance( lat1, lon1, lat2, lon2 )
     distances = Hash.new
