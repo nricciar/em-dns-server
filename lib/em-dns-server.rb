@@ -38,7 +38,7 @@ module DNSServer
     Dir.entries("zones").each do |file|
       if file =~ /^(.*).zone$/
         zonefile = File.read("zones/#{file}")
-        @@ZONEMAP[$1] = zonefile.scan(/^(([\w@\-\.]+)\s+(([0-9]+)\s+|)([A-Za-z]+)\s+([A-Za-z]+)\s+(([0-9]+)\s+|)([\w@\-\.]+))/)
+        @@ZONEMAP[$1] = zonefile.scan(/^(([\w@\*\-\.]+)\s+(([0-9]+)\s+|)([A-Za-z]+)\s+([A-Za-z]+)\s+(([0-9]+)\s+|)([\w@\-\.]+))/)
       end
     end
   end
@@ -80,11 +80,11 @@ module DNSServer
       puts "Q: #{query}"
       query.gsub!(/#{domain}\.|#{domain}/,"")
       query = query == "" ? "@" : query.chomp(".")
-      puts "Q: #{query}"
 
       match_distance = nil
       match_record = nil
       match_address = nil
+      wildcard_match = nil
 
       zone_records.each do |rr|
         if rr[1] == query.to_s && rr[4] == question.qclass.to_s && rr[5] == question.qtype.to_s
@@ -111,12 +111,25 @@ module DNSServer
           # add the CNAME to our response, and then attempt to resolve the record
           msg.add_answer(Dnsruby::RR.create(rr[0].gsub(/@/,domain)))
           raise DnsRedirect, rr.last
+        elsif success == false && rr[1] =~ /\*/
+          # possible wildcard match
+          tmp_query = rr[1].gsub(/\*/,'([\w\-\.]+)')
+          if query.to_s =~ /#{tmp_query}/
+            wildcard_match = "#{question.qname.to_s} #{rr[3]} #{question.qclass.to_s} #{question.qtype.to_s} #{rr.last}"
+            match_address = rr.last
+          end
         end
       end
       unless match_record.nil?
         # the final result for the current question
         msg.add_answer(Dnsruby::RR.create(match_record.gsub(/@/,domain)))
         puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{match_address} -- Distance: #{match_distance}"
+        success = true
+      end
+      if success == false && !wildcard_match.nil?
+        # no match found, but a wildcard match qualifies
+        msg.add_answer(Dnsruby::RR.create(wildcard_match.gsub(/@/,domain)))
+        puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{match_address} with wildcard."
         success = true
       end
     rescue DnsRedirect => redirect
