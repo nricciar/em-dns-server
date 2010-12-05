@@ -178,6 +178,7 @@ module DNSServer
   end
 
   def formatted_line_from_hash(rr,domain)
+    rr = rr.clone
     rr[:name] += ".#{domain}" if rr[:name] != "@" && rr[:name][-1,1] != "."
     rr[:name] = domain if rr[:name] == "@"
     case rr[:type]
