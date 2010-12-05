@@ -1,7 +1,6 @@
 require 'eventmachine'
 require 'dnsruby'
 require 'daemons'
-require 'resolv'
 begin
   require 'geoip'
 rescue LoadError
@@ -38,9 +37,38 @@ module DNSServer
     Dir.entries("zones").each do |file|
       if file =~ /^(.*).zone$/
         zonefile = File.read("zones/#{file}")
-        @@ZONEMAP[$1] = zonefile.scan(/^(([\w@\*\-\.]+)\s+(([0-9]+)\s+|)([A-Za-z]+)\s+([A-Za-z]+)\s+(([0-9]+)\s+|)([\w@\-\.]+))/)
+        @@ZONEMAP.merge!(self.parse_zone_file("zones/#{file}"))
       end
     end
+  end
+
+  def self.reload_zone_file(filename)
+    @@ZONEMAP.merge!(self.parse_zone_file(filename))
+  end
+
+  def self.parse_zone_file(filename)
+    ret = {}
+    origin = nil
+    ttl = nil
+    records = []
+
+    file = File.new(filename,'r')
+    while (line = file.gets)
+      case line.split(";").first
+      when /\$ORIGIN\s+([^\s]+)$/
+        origin = $1
+      when /\$TTL\s+([\w]+)(.+)$/
+        ttl = $1
+      when /^(([\w@\*\-\.]+)\s+(([0-9]+)\s+|)([A-Za-z]+)\s+([A-Za-z]+)\s+(([0-9]+)\s+|)([\w@\-\.:]+))/
+        records << { :name => $2, :ttl => $4, :class => $5, :type => $6, 
+	  :priority => $8, :address => $9}
+      end
+    end
+    file.close
+    origin = File.basename(filename, ".zone") if origin.nil?
+    origin += "." if origin[-1,1] != "."
+    ret[origin] = { :records => records, :ttl => ttl }
+    ret
   end
 
   def receive_data(data)
@@ -69,28 +97,29 @@ module DNSServer
   def resolv(question,msg,geoip_data=nil)
     success = false
     query = question.qname.to_s
+    query += "." if query[-1,1] != "."
     domain = nil
     zone_records = []
 
     # load the zone information for the current question
     @@ZONEMAP.each { |key,value| domain = key if query =~ /#{key}$/ }
-    zone_records = @@ZONEMAP[domain] unless domain.nil?
+    zone_records = @@ZONEMAP[domain][:records] unless domain.nil?
 
     begin
       puts "Q: #{query}"
-      query.gsub!(/#{domain}\.|#{domain}/,"")
+      query.gsub!(/#{domain}/,"")
       query = query == "" ? "@" : query.chomp(".")
+      puts "Q: #{query}"
 
       match_distance = nil
       match_record = nil
-      match_address = nil
       wildcard_match = nil
 
       zone_records.each do |rr|
-        if rr[1] == query.to_s && rr[4] == question.qclass.to_s && rr[5] == question.qtype.to_s
+        if rr[:name] == query.to_s && rr[:class] == question.qclass.to_s && rr[:type] == question.qtype.to_s
           if DNSServer.geoip_enabled?
             # get the location information for the current record
-            rr_geo = @@GEOIP.country(rr.last)
+            rr_geo = @@GEOIP.country(rr[:address])
             distance = rr_geo.nil? ? 0 : haversine_distance(geoip_data[9],geoip_data[10],
 		rr_geo[9],rr_geo[10])["mi"].to_i
 
@@ -98,38 +127,42 @@ module DNSServer
             # to the client
             if match_record.nil? || match_distance.nil? || match_distance > distance
               match_distance = distance
-              match_record = rr[0]
-              match_address = rr.last
+              match_record = rr
             end
           else
             # go ahead and add to response if geoip based responses are disabled
-            msg.add_answer(Dnsruby::RR.create(rr[0].gsub(/@/,domain)))
-            puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{rr.last}"
+            msg.add_answer(Dnsruby::RR.create(formatted_line_from_hash(rr,domain)))
+            puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{rr[:address]}"
             success = true
           end
-        elsif rr[1] == query && rr[5] == "CNAME" && question.qtype == "A"
+        elsif rr[:name] == query && rr[:type] == "CNAME" && question.qtype == "A"
           # add the CNAME to our response, and then attempt to resolve the record
-          msg.add_answer(Dnsruby::RR.create(rr[0].gsub(/@/,domain)))
-          raise DnsRedirect, rr.last
-        elsif success == false && rr[1] =~ /\*/
-          # possible wildcard match
-          tmp_query = rr[1].gsub(/\*/,'([\w\-\.]+)')
-          if query.to_s =~ /#{tmp_query}/
-            wildcard_match = "#{question.qname.to_s} #{rr[3]} #{question.qclass.to_s} #{question.qtype.to_s} #{rr.last}"
-            match_address = rr.last
+          msg.add_answer(Dnsruby::RR.create(formatted_line_from_hash(rr,domain)))
+          address = rr[:address]
+          if address[-1,1] != "."
+            address += ".#{domain}"
+          else
+            success = true
           end
+          raise DnsRedirect, address
+        elsif success == false && rr[:name] =~ /\*/
+          # possible wildcard match
+          tmp_query = rr[:name].gsub(/\*/,'([\w\-\.]+)')
+          tmp_name = question.qname.to_s
+          tmp_name += "." if question.qname.to_s[-1,1] != "."
+          wildcard_match = rr.merge(:name => tmp_name) if query.to_s =~ /#{tmp_query}/
         end
       end
       unless match_record.nil?
         # the final result for the current question
-        msg.add_answer(Dnsruby::RR.create(match_record.gsub(/@/,domain)))
-        puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{match_address} -- Distance: #{match_distance}"
+        msg.add_answer(Dnsruby::RR.create(formatted_line_from_hash(match_record,domain)))
+        puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{match_record[:address]} -- Distance: #{match_distance}"
         success = true
       end
       if success == false && !wildcard_match.nil?
         # no match found, but a wildcard match qualifies
-        msg.add_answer(Dnsruby::RR.create(wildcard_match.gsub(/@/,domain)))
-        puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{match_address} with wildcard."
+        msg.add_answer(Dnsruby::RR.create(formatted_line_from_hash(wildcard_match,domain)))
+        puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{wildcard_match[:address]} with wildcard."
         success = true
       end
     rescue DnsRedirect => redirect
@@ -139,8 +172,19 @@ module DNSServer
     end
     if success == true
       zone_records.each do |rr|
-        msg.add_authority(Dnsruby::RR.create(rr[0].gsub(/@/,domain))) if rr[5] == "NS"
+        msg.add_authority(Dnsruby::RR.create(formatted_line_from_hash(rr,domain))) if rr[:type] == "NS"
       end
+    end
+  end
+
+  def formatted_line_from_hash(rr,domain)
+    rr[:name] += ".#{domain}" if rr[:name] != "@" && rr[:name][-1,1] != "."
+    rr[:name] = domain if rr[:name] == "@"
+    case rr[:type]
+    when "MX"
+      "#{rr[:name]} #{rr[:ttl]} #{rr[:class]} #{rr[:type]} #{rr[:priority]} #{rr[:address]}"
+    else
+      "#{rr[:name]} #{rr[:ttl]} #{rr[:class]} #{rr[:type]} #{rr[:address]}"
     end
   end
 
