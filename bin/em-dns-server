@@ -36,6 +36,32 @@ Daemons.run_proc('em-dns-server', :log_output => true) do
     EM.epoll
     EM.start_server "0.0.0.0", 53, DNSServer
     EM.open_datagram_socket '0.0.0.0', 53, DNSServer
+
+    # code taken and adepted from http://fossplanet.com/f14/super-user-cant-change-uid-22358/index2.html#post88232
+    begin
+      user = ENV['DNS_USER'] || 'nobody'
+      group = ENV['DNS_GROUP'] || 'nogroup'
+      uid, gid = Process.euid, Process.egid
+
+      begin
+        target_uid = Etc.getpwnam(user).uid
+      rescue ArgumentError => e
+      end
+
+      begin
+        target_gid = Etc.getgrnam(group).gid
+      rescue ArgumentError => e
+      end
+
+      if (uid != target_uid) || (gid != target_gid)
+        Process.initgroups(user, target_gid)
+        Process::GID.change_privilege(target_gid)
+        Process::UID.change_privilege(target_uid)
+      end
+    rescue Errno::EPERM => e
+      puts "Unable to switch to user \"#{user}\""
+    end
+
   end
 
 end
