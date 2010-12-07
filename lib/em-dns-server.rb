@@ -10,15 +10,16 @@ module DNSServer
   include ZoneFile
 
   PLUGIN_PATH = File.join(File.dirname(__FILE__),'..')
-  VERSION = "0.1.2"
+  ZONE_FILES = File.expand_path(ENV['ZONE_FILES'] || File.join(PLUGIN_PATH,'zones'))
+  VERSION = "0.2.0"
   
   @@ZONEMAP = {}
 
   def self.init()
-    Dir.entries("zones").each do |file|
+    Dir.entries(ZONE_FILES).each do |file|
       if file =~ /^(.*).zone$/
-        zonefile = File.read("zones/#{file}")
-        @@ZONEMAP.merge!(self.parse_zone_file("zones/#{file}"))
+        zonefile = File.read(File.join(ZONE_FILES, file))
+        @@ZONEMAP.merge!(self.parse_zone_file(File.join(ZONE_FILES, file)))
       end
     end
 
