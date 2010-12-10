@@ -22,6 +22,8 @@ spec = Gem::Specification.new do |s|
   s.add_dependency("daemons")
   s.add_dependency("eventmachine")
   s.add_dependency("dnsruby")
+  s.add_dependency("sinatra")
+  s.add_dependency("builder")
 end
 
 Rake::GemPackageTask.new(spec) do |pkg|

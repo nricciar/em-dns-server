@@ -3,6 +3,7 @@ require 'dnsruby'
 require 'daemons'
 require File.join(File.dirname(__FILE__),'em-dns-server/geoip')
 require File.join(File.dirname(__FILE__),'em-dns-server/zonefile')
+require File.join(File.dirname(__FILE__),'em-dns-server/errors')
 
 module DNSServer
 
@@ -14,6 +15,10 @@ module DNSServer
   VERSION = "0.2.0"
   
   @@ZONEMAP = {}
+
+  def self.zonemap
+    @@ZONEMAP
+  end
 
   def self.init()
     Dir.entries(ZONE_FILES).each do |file|
@@ -31,17 +36,20 @@ module DNSServer
 
     operation = proc do
       client_ip = get_peername[2,6].unpack("nC4")[1,4].join(".")
-      geoip_data = @@GEOIP.country(client_ip) if DNSServer.geoip_enabled?
+      @geoip_data = @@GEOIP.country(client_ip) if DNSServer.geoip_enabled?
+      @resolver = Dnsruby::Resolver.new
+      @query_id = 10
+      @query_queue = Queue.new
 
       msg.question.each do |question|
-        resolv(question,msg,geoip_data)
+        resolv(question,msg)
       end
     end
 
     callback = proc do |res|
       # mark the message as a response and send it to the client
       msg.header.qr = true
-      msg.header.rcode = Dnsruby::RCode.NoError
+      msg.header.rcode = msg.answer.empty? ? Dnsruby::RCode::REFUSED : Dnsruby::RCode.NoError
       send_data msg.encode
     end
 
@@ -49,7 +57,7 @@ module DNSServer
   end
 
   protected
-  def resolv(question,msg,geoip_data=nil)
+  def resolv(question,msg)
     success = false
     query = question.qname.to_s
     query += "." if query[-1,1] != "."
@@ -71,10 +79,10 @@ module DNSServer
 
       zone_records.each do |rr|
         if rr[:name] == query.to_s && rr[:class] == question.qclass.to_s && rr[:type] == question.qtype.to_s
-          if DNSServer.geoip_enabled?
+          if DNSServer.geoip_enabled? && !@geoip_data.nil?
             # get the location information for the current record
             rr_geo = @@GEOIP.country(rr[:address])
-            distance = rr_geo.nil? ? 0 : haversine_distance(geoip_data[9],geoip_data[10],
+            distance = rr_geo.nil? ? 0 : haversine_distance(@geoip_data[9],@geoip_data[10],
 		rr_geo[9],rr_geo[10])["mi"].to_i
 
             # if this is the first match or if we have found a match closer

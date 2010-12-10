@@ -1,4 +1,5 @@
 $TTL	86400 ; 24 hours could have been written as 24h or 1d
+;$ZONEID D59B47AEDF3A1C
 $ORIGIN example.com.
 @  1D  IN	 SOA ns1.example.com.	hostmaster.example.com. (
 			      2002022401 ; serial

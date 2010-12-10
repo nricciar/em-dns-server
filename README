@@ -5,6 +5,7 @@ required gems:
 
   daemons
   eventmachine
+  sinatra
   dnsruby
 
 optional gems:

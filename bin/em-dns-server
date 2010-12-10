@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 require 'rubygems'
 require 'em-dns-server'
+require 'em-dns-server/api'
 require 'net/http'
 require 'fileutils'
 
@@ -36,6 +37,7 @@ Daemons.run_proc('em-dns-server', :log_output => true) do
     EM.epoll
     EM.start_server "0.0.0.0", 53, DNSServer
     EM.open_datagram_socket '0.0.0.0', 53, DNSServer
+    DNSServer::WebAPI.run!({ :port => 9967 })
 
     # code taken and adepted from http://fossplanet.com/f14/super-user-cant-change-uid-22358/index2.html#post88232
     begin
