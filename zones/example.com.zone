@@ -1,5 +1,6 @@
 $TTL	86400 ; 24 hours could have been written as 24h or 1d
-;$ZONEID D59B47AEDF3A1C
+;$REF 3252362361236
+;$ZONEID D59B47AEDF3A1C ; this is a zone comment
 $ORIGIN example.com.
 @  1D  IN	 SOA ns1.example.com.	hostmaster.example.com. (
 			      2002022401 ; serial

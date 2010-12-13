@@ -3,7 +3,6 @@ require 'dnsruby'
 require 'daemons'
 require File.join(File.dirname(__FILE__),'em-dns-server/geoip')
 require File.join(File.dirname(__FILE__),'em-dns-server/zonefile')
-require File.join(File.dirname(__FILE__),'em-dns-server/errors')
 
 module DNSServer
 
@@ -27,7 +26,7 @@ module DNSServer
         @@ZONEMAP.merge!(self.parse_zone_file(File.join(ZONE_FILES, file)))
       end
     end
-
+    
     @@GEOIP = GeoIP.new(self.geoip_data_path) unless !File.exists?(self.geoip_data_path)
   end
 
@@ -79,7 +78,7 @@ module DNSServer
 
       zone_records.each do |rr|
         if rr[:name] == query.to_s && rr[:class] == question.qclass.to_s && rr[:type] == question.qtype.to_s
-          if DNSServer.geoip_enabled? && !@geoip_data.nil?
+          if DNSServer.geoip_enabled? && !@geoip_data.nil? && rr[:type] != "SOA"
             # get the location information for the current record
             rr_geo = @@GEOIP.country(rr[:address])
             distance = rr_geo.nil? ? 0 : haversine_distance(@geoip_data[9],@geoip_data[10],
@@ -140,16 +139,21 @@ module DNSServer
   end
 
   def formatted_line_from_hash(rr,domain)
-    rr = rr.clone
-    rr[:name] += ".#{domain}" if rr[:name] != "@" && rr[:name][-1,1] != "."
-    rr[:name] = domain if rr[:name] == "@"
-    rr[:address] += ".#{domain}" if rr[:address] !~ /^\d+\.\d+\.\d+\.\d+$/ && rr[:address][-1,1] != "."
     case rr[:type]
+    when "SOA"
+      "#{expanded_address(rr[:name],domain)} #{rr[:ttl]} #{rr[:class]} #{rr[:type]} #{expanded_address(rr[:ns],domain)} #{expanded_address(rr[:email],domain)} #{rr[:address].join(' ')}"
     when "MX"
-      "#{rr[:name]} #{rr[:ttl]} #{rr[:class]} #{rr[:type]} #{rr[:priority]} #{rr[:address]}"
+      "#{expanded_address(rr[:name],domain)} #{rr[:ttl]} #{rr[:class]} #{rr[:type]} #{rr[:priority]} #{expanded_address(rr[:address],domain)}"
     else
-      "#{rr[:name]} #{rr[:ttl]} #{rr[:class]} #{rr[:type]} #{rr[:address]}"
+      "#{expanded_address(rr[:name],domain)} #{rr[:ttl]} #{rr[:class]} #{rr[:type]} #{expanded_address(rr[:address],domain)}"
     end
+  end
+
+  def expanded_address(address,zone)
+    return address if address =~ /^\d+\.\d+\.\d+\.\d+$/
+    return zone if address == "@"
+    return "#{address}.#{zone}" if address[-1,1] != "."
+    address
   end
 
   class DnsRedirect < Exception

@@ -26,7 +26,8 @@ module DNSServer
           zone_id = generate_key
           ttl = 86400
           zone_file = <<EOS
-;$ZONEID #{zone_id}
+;$REF #{ref}
+;$ZONEID #{zone_id} ; #{comment}
 $TTL    #{ttl}
 $ORIGIN #{zone}
 @  1D  IN        SOA ns1.#{zone}   hostmaster.#{zone} (
@@ -48,6 +49,12 @@ EOS
           z = get_zone(zone)
           name.sub!($3,"") if name =~ /((.*)((\A|.)#{zone}))$/
           name = "@" if name == ""
+
+          if type == "MX" && address =~ /^(\d+)\s+(.*)$/
+            type = "MX #{$1}"
+            address = $2
+          end
+
           address.sub!($3,"") if address =~ /((.*)((\A|.)#{zone}))$/
           address = "@" if address == ""
           rr = "#{name} #{ttl} IN #{type} #{address}\n"
@@ -173,15 +180,33 @@ EOS
 	  ret = {}
 	  origin = nil
           zone_id = nil
+          zone_comment = nil
+          zone_ref = nil
 	  ttl = nil
 	  records = []
           rrline = 0
 	  file = File.read(filename)
-          zone_id = $3 if file =~ /(^\A|\n)\s*(;|)\s*\$ZONEID\s+([^\s;]+)/
+          if file =~ /(^\A|\n)\s*(;|)\s*\$REF\s+([^\s;]+)/
+            zone_ref = $3
+          end
+          if file =~ /(^\A|\n)\s*(;|)\s*\$ZONEID\s+([^\s;]+)\s*(;\s*(.+)|)/
+            zone_id = $3
+            zone_comment = $5
+          end
 
 	  file.gsub!(/;.*$/,"") # strip comments
 	  file.gsub!(/\t+/," ") # fold whitespace
 
+          if file =~ /(\n|\A)(|\*\.[\w\d\.]+|\*|\s*\@|\.|([-\w\d]+(\.[-\w\d]+)*\.?)) 
+		\s+ (([\dDdHhWw]+|IN|HESIOD|CHAOS)\s+)? (([\dDdHhWw]+|IN|HESIOD|CHAOS)\s+)? 
+		(SOA) \s+ ([-\w\d]+((\.[-\w\d]+)*)?\.?) \s+ ([-\w\d]+((\.[-\w\d]+)*)?\.?) 
+		\s+ \( \s+ ([^)]+) \)/mxi
+            record = { :name => $2, :type => "SOA", :ns => $10, :email => $13 }
+            soa_data = $16.split("\n").collect { |c| c.strip.empty? ? nil : get_ttl_from_string(c.strip) }.compact
+            record[:address] = soa_data
+            record.merge!(fix_ttl_class($6,$8,ttl))
+            records << record
+          end
 	  file.split("\n").each do |line|
             rrline += 1
 	    record = nil
@@ -221,11 +246,12 @@ EOS
 	  end
 	  origin = File.basename(filename, ".zone") if origin.nil?
 	  origin += "." if origin[-1,1] != "."
-	  ret[origin] = { :records => records, :ttl => ttl, :filename => filename, :mtime => File.mtime(filename), :key => (zone_id || generate_key) }
+	  ret[origin] = { :records => records, :ttl => ttl, :filename => filename, :mtime => File.mtime(filename), 
+		:key => (zone_id || generate_key), :comment => zone_comment, :ref => zone_ref }
 	  ret
 	end
 
-	protected
+        protected
         def expanded_address(address,zone)
           return address if address =~ /^\d+\.\d+\.\d+\.\d+$/
           return zone if address == "@"
@@ -241,6 +267,8 @@ EOS
 	def fix_ttl_class(ct1,ct2,ttl)
 	  if ct1 =~ /^\d+$/
 	    { :ttl => get_ttl_from_string(ct1), :class => (ct2 || 'IN') }
+          elsif ct1 =~ /^((\d+)([MHSDW]))$/i
+            { :ttl => get_ttl_from_string(ct1), :class => (ct2 || 'IN') }
 	  else
 	    { :ttl => get_ttl_from_string((ct2 || (ttl || 0))), :class => (ct1 || 'IN') }
 	  end

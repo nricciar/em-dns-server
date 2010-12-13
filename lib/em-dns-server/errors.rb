@@ -14,6 +14,7 @@ module DNSServer
       HostedZoneAlreadyExists: [403, The hosted zone you are attempting to create already exists.]
       InvalidSignature: [403, The request signature Amazon Route 53 calculated does not match the signature you provided. ]
       MissingAuthenticationToken: [403, Missing Authentication Token ]
+      NoSuchHostedZone: [403, The hosted zone ID you entered is not valid.]
   END
   each do |code, (status, msg)|
     const_set(code, Class.new(ServiceError) {
