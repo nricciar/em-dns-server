@@ -1,13 +1,12 @@
 require 'eventmachine'
 require 'dnsruby'
 require 'daemons'
-require File.join(File.dirname(__FILE__),'em-dns-server/geoip')
-require File.join(File.dirname(__FILE__),'em-dns-server/zonefile')
+require 'em-dns-server/geoip'
+require 'em-dns-server/parser'
 
 module DNSServer
 
   include GeoIPRoute
-  include ZoneFile
 
   PLUGIN_PATH = File.join(File.dirname(__FILE__),'..')
   ZONE_FILES = File.expand_path(ENV['ZONE_FILES'] || File.join(PLUGIN_PATH,'zones'))
@@ -22,8 +21,8 @@ module DNSServer
   def self.init()
     Dir.entries(ZONE_FILES).each do |file|
       if file =~ /^(.*).zone$/
-        zonefile = File.read(File.join(ZONE_FILES, file))
-        @@ZONEMAP.merge!(self.parse_zone_file(File.join(ZONE_FILES, file)))
+        zone = ZoneFile.new(File.join(ZONE_FILES, file))
+        @@ZONEMAP[zone.origin] = zone
       end
     end
     
@@ -65,22 +64,20 @@ module DNSServer
 
     # load the zone information for the current question
     @@ZONEMAP.each { |key,value| domain = key if query =~ /#{key}$/ }
-    zone_records = @@ZONEMAP[domain][:records] unless domain.nil?
+    zone_records = @@ZONEMAP[domain].records unless domain.nil?
 
     begin
       puts "Q: #{query}"
-      query.gsub!(/#{domain}/,"")
-      query = query == "" ? "@" : query.chomp(".")
 
       match_distance = nil
       match_record = nil
       wildcard_match = nil
 
       zone_records.each do |rr|
-        if rr[:name] == query.to_s && rr[:class] == question.qclass.to_s && rr[:type] == question.qtype.to_s
-          if DNSServer.geoip_enabled? && !@geoip_data.nil? && rr[:type] != "SOA"
+        if rr.full_name == query.to_s && rr.class == question.qclass.to_s && rr.type == question.qtype.to_s
+          if DNSServer.geoip_enabled? && !@geoip_data.nil? && rr.type == "A"
             # get the location information for the current record
-            rr_geo = @@GEOIP.country(rr[:address])
+            rr_geo = @@GEOIP.country(rr.full_address)
             distance = rr_geo.nil? ? 0 : haversine_distance(@geoip_data[9],@geoip_data[10],
 		rr_geo[9],rr_geo[10])["mi"].to_i
 
@@ -92,38 +89,38 @@ module DNSServer
             end
           else
             # go ahead and add to response if geoip based responses are disabled
-            msg.add_answer(Dnsruby::RR.create(formatted_line_from_hash(rr,domain)))
-            puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{rr[:address]}"
+            msg.add_answer(Dnsruby::RR.create(formatted_response(rr,domain)))
+            puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{rr.full_address}"
             success = true
           end
-        elsif rr[:name] == query && rr[:type] == "CNAME" && question.qtype == "A"
+        elsif rr.full_name == query && rr.type == "CNAME" && question.qtype == "A"
           # add the CNAME to our response, and then attempt to resolve the record
-          msg.add_answer(Dnsruby::RR.create(formatted_line_from_hash(rr,domain)))
-          address = rr[:address]
+          msg.add_answer(Dnsruby::RR.create(formatted_response(rr,domain)))
+          address = rr.address
           if address[-1,1] != "."
             address += ".#{domain}"
           else
             success = true
           end
           raise DnsRedirect, address
-        elsif success == false && rr[:name] =~ /\*/
+        elsif success == false && rr.name =~ /\*/
           # possible wildcard match
-          tmp_query = rr[:name].gsub(/\*/,'([\w\-\.]+)')
+          tmp_query = rr.name.gsub(/\*/,'([\w\-\.]+)')
           tmp_name = question.qname.to_s
           tmp_name += "." if question.qname.to_s[-1,1] != "."
-          wildcard_match = rr.merge(:name => tmp_name) if query.to_s =~ /#{tmp_query}/
+          wildcard_match = rr if query.to_s =~ /#{tmp_query}/
         end
       end
       unless match_record.nil?
         # the final result for the current question
-        msg.add_answer(Dnsruby::RR.create(formatted_line_from_hash(match_record,domain)))
-        puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{match_record[:address]} -- Distance: #{match_distance}"
+        msg.add_answer(Dnsruby::RR.create(formatted_response(match_record,domain)))
+        puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{match_record.full_address} -- Distance: #{match_distance}"
         success = true
       end
       if success == false && !wildcard_match.nil?
         # no match found, but a wildcard match qualifies
-        msg.add_answer(Dnsruby::RR.create(formatted_line_from_hash(wildcard_match,domain)))
-        puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{wildcard_match[:address]} with wildcard."
+        msg.add_answer(Dnsruby::RR.create(formatted_response(wildcard_match,domain,query)))
+        puts "#{question.qclass} #{question.qtype} #{question.qname.to_s} Resolved to #{wildcard_match.full_address} with wildcard."
         success = true
       end
     rescue DnsRedirect => redirect
@@ -133,27 +130,20 @@ module DNSServer
     end
     if success == true
       zone_records.each do |rr|
-        msg.add_authority(Dnsruby::RR.create(formatted_line_from_hash(rr,domain))) if rr[:type] == "NS"
+        msg.add_authority(Dnsruby::RR.create(formatted_response(rr,domain))) if rr.type == "NS"
       end
     end
   end
 
-  def formatted_line_from_hash(rr,domain)
-    case rr[:type]
+  def formatted_response(rr,domain,name_override=nil)
+    case rr.type
     when "SOA"
-      "#{expanded_address(rr[:name],domain)} #{rr[:ttl]} #{rr[:class]} #{rr[:type]} #{expanded_address(rr[:ns],domain)} #{expanded_address(rr[:email],domain)} #{rr[:address].join(' ')}"
+      "#{rr.full_name} #{rr.ttl} #{rr.class} #{rr.type} #{rr.ns} #{rr.email} #{rr.address.join(' ')}"
     when "MX"
-      "#{expanded_address(rr[:name],domain)} #{rr[:ttl]} #{rr[:class]} #{rr[:type]} #{rr[:priority]} #{expanded_address(rr[:address],domain)}"
+      "#{rr.full_name} #{rr.ttl} #{rr.class} #{rr.type} #{rr.priority} #{rr.full_address}"
     else
-      "#{expanded_address(rr[:name],domain)} #{rr[:ttl]} #{rr[:class]} #{rr[:type]} #{expanded_address(rr[:address],domain)}"
+      "#{name_override || rr.full_name} #{rr.ttl} #{rr.class} #{rr.type} #{rr.full_address}"
     end
-  end
-
-  def expanded_address(address,zone)
-    return address if address =~ /^\d+\.\d+\.\d+\.\d+$/
-    return zone if address == "@"
-    return "#{address}.#{zone}" if address[-1,1] != "."
-    address
   end
 
   class DnsRedirect < Exception
