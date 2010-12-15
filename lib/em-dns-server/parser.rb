@@ -45,12 +45,42 @@ class ZoneFile
     @origin
   end
 
+  def origin=(val)
+    @origin = val
+  end
+
   def ttl
     @ttl
   end
 
+  def ttl=(val)
+    @ttl = val
+  end
+
   def records
     @records
+  end
+
+  def output
+    out = ";$REF #{@ref}\n;$ZONEID #{@id} ; #{@comment}\n"
+    out << "$TTL #{@ttl}\n" unless @ttl.nil?
+    out << "$ORIGIN #{@origin}\n"
+    records.each do |record|
+      case record.type
+      when "SOA"
+        out << "#{record.name} #{record.ttl} #{record.class} #{record.type} #{record.ns} #{record.email} (\n"
+        out << "                     #{(record.address[0].to_s+',').ljust(18,' ')}  ; serial\n"
+        out << "                     #{(record.address[1].to_s+',').ljust(18,' ')}  ; refresh\n"
+        out << "                     #{(record.address[2].to_s+',').ljust(18,' ')}  ; retry\n"
+        out << "                     #{(record.address[3].to_s+',').ljust(18,' ')}  ; expire\n"
+        out << "                     #{(record.address[4].to_s+')').ljust(18,' ')}  ; minimum\n"
+      when "MX"
+        out << "#{record.name.ljust(20,' ')} #{record.ttl.to_s.ljust(9,' ')} #{record.class} MX #{record.priority}  #{record.address}\n"
+      else
+        out << "#{record.name.ljust(20,' ')} #{record.ttl.to_s.ljust(9,' ')} #{record.class} #{record.type.ljust(6,' ')} #{record.address}\n"
+      end
+    end
+    out
   end
 
   protected
@@ -156,6 +186,10 @@ class ZoneFileRecord
     @record[:name]
   end
 
+  def name=(val)
+    @record[:name] = val
+  end
+
   def full_name
     expanded_address(@record[:name],@zone.origin)
   end
@@ -172,12 +206,24 @@ class ZoneFileRecord
     @record[:ttl]
   end
 
+  def ttl=(val)
+    @record[:ttl] = val
+  end
+
   def address
     @record[:address]
   end
 
+  def address=(val)
+    @record[:address] = val
+  end
+
   def priority
     @record[:priority]
+  end
+
+  def priority=(val)
+    @record[:priority] = val
   end
 
   def full_address
