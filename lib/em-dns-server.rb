@@ -10,7 +10,7 @@ module DNSServer
 
   PLUGIN_PATH = File.join(File.dirname(__FILE__),'..')
   ZONE_FILES = File.expand_path(ENV['ZONE_FILES'] || File.join(PLUGIN_PATH,'zones'))
-  VERSION = "0.2.0"
+  VERSION = "0.3.0"
   
   @@ZONEMAP = {}
 
@@ -48,7 +48,6 @@ module DNSServer
     callback = proc do |res|
       # mark the message as a response and send it to the client
       msg.header.qr = true
-      msg.header.rcode = msg.answer.empty? ? Dnsruby::RCode::REFUSED : Dnsruby::RCode.NoError
       send_data msg.encode
     end
 
@@ -66,6 +65,10 @@ module DNSServer
     # load the zone information for the current question
     @@ZONEMAP.each { |key,value| domain = key if query =~ /#{key}$/ }
     zone_records = @@ZONEMAP[domain].records unless domain.nil?
+    if domain.nil?
+      msg.header.rcode = Dnsruby::RCode::REFUSED
+      return
+    end
 
     begin
       puts "Q: #{query}"
@@ -133,6 +136,12 @@ module DNSServer
       zone_records.each do |rr|
         msg.add_authority(Dnsruby::RR.create(formatted_response(rr,domain))) if rr.type == "NS"
       end
+      msg.header.rcode = Dnsruby::RCode.NoError
+    else
+      zone_records.each do |rr|
+        msg.add_authority(Dnsruby::RR.create(formatted_response(rr,domain))) if rr.full_name == domain && rr.type == "SOA"
+      end
+      msg.header.rcode = Dnsruby::RCode::NXDOMAIN
     end
   end
 

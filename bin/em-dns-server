@@ -1,5 +1,4 @@
 #!/usr/bin/env ruby
-$:.unshift "./lib"
 require 'rubygems'
 require 'em-dns-server'
 require 'net/http'

@@ -15,7 +15,7 @@ module DNSServer
         @@GEOIP = nil
 
         def geoip_data_path
-          @@GEOIP_PATH ||= File.join(PLUGIN_PATH,"GeoLiteCity.dat")
+          @@GEOIP_PATH ||= File.expand_path(File.join(DNSServer::PLUGIN_PATH,"GeoLiteCity.dat"))
         end
 
         def geoip_data_path=(val)
