@@ -19,14 +19,15 @@ module DNSServer
   end
 
   def self.init()
-    Dir.entries(ZONE_FILES).each do |file|
-      if file =~ /^(.*).zone$/
-        zone = ZoneFile.new(File.join(ZONE_FILES, file))
-        @@ZONEMAP[zone.origin] = zone
-      end
-    end
-    
     @@GEOIP = GeoIP.new(self.geoip_data_path) unless !File.exists?(self.geoip_data_path)
+  end
+
+  def self.load_zone(filename)
+    zone = ZoneFile.new(filename)
+    puts "Loading zone #{zone.origin}"
+    @@ZONEMAP[zone.origin] = zone
+  rescue
+    puts "-- Invalid zone file #{filename}"
   end
 
   def receive_data(data)

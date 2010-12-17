@@ -5,7 +5,6 @@ required gems:
 
   daemons
   eventmachine
-  sinatra
   dnsruby
 
 optional gems:
@@ -18,19 +17,7 @@ optional gems:
 
 usage:
 
-  server:
-  $ em-dns-server start|stop|run|status
-
-  route 53 api:
-  $ rackup opt/route53.ru -p 9967
-
-  environment variables
-  ZONE_FILES - directory where the zone files are stored
-  DNS_USER   - user em-dns-server will run as (default: nobody)
-  DNS_GROUP  - group em-dns-server will run as (default: nogroup)
-
-  when using the route 53 api insure the zone files directory is
-  both readable and writable by the rackup instance.
+  em-dns-server start|stop|run|status
 
 test:
 

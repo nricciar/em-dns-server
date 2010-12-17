@@ -21,4 +21,5 @@ spec = Gem::Specification.new do |s|
   s.add_dependency("eventmachine")
   s.add_dependency("dnsruby")
   s.add_dependency("builder")
+  s.add_dependency("directory_watcher")
 end

@@ -1,8 +1,10 @@
 #!/usr/bin/env ruby
+$:.unshift "./lib"
 require 'rubygems'
 require 'em-dns-server'
 require 'net/http'
 require 'fileutils'
+require 'directory_watcher'
 
 if ARGV.any? { |arg| %w(--version -v).any? { |flag| arg == flag } }
   puts "em-dns-server #{DNSServer::VERSION}"
@@ -32,10 +34,24 @@ Daemons.run_proc('em-dns-server', :log_output => true) do
   Dir.chdir DNSServer::PLUGIN_PATH
   DNSServer.init
 
+  dw = DirectoryWatcher.new DNSServer::ZONE_FILES, :scanner => :em
+  dw.add_observer {|*args| args.each {|event| 
+    case event.type
+    when :added
+      DNSServer.load_zone(event.path)
+    when :modified
+      DNSServer.load_zone(event.path)
+    when :removed
+      ret = DNSServer.zonemap.delete_if { |key,value| value.filename == event.path }
+      ret.each { |r| puts "Stopped watching #{r.origin}" }
+    end
+  }}
+
   EM.run do
     EM.epoll
     EM.start_server "0.0.0.0", 53, DNSServer
     EM.open_datagram_socket '0.0.0.0', 53, DNSServer
+    dw.start
 
     # code taken and adepted from http://fossplanet.com/f14/super-user-cant-change-uid-22358/index2.html#post88232
     begin

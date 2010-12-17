@@ -12,9 +12,13 @@ class ZoneFile
     @origin = nil
     @ttl = 3600
     @records = []
+    @uid = nil
 
     if @data =~ /(^\A|\n)\s*(;|)\s*\$REF\s+([^\s;]+)/
       @ref = $3
+    end
+    if @data =~ /(^\A|\n)\s*(;|)\s*\$UID\s+([^\s;]+)/
+      @uid = $3
     end
     if @data =~ /(^\A|\n)\s*(;|)\s*\$ZONEID\s+([^\s;]+)\s*(;\s*(.+)|)/
       @id = $3
@@ -27,10 +31,19 @@ class ZoneFile
     until (record = get_next_record()).nil?
       @records << ZoneFileRecord.new(record,self)
     end
+    @records.sort! { |x,y| "#{x.type}#{x.name}" <=> "#{y.type}#{y.name}" }
+  end
+
+  def add_record(record)
+    @records << ZoneFileRecord.new(record,self)
   end
 
   def ref
     @ref
+  end
+
+  def uid
+    @uid
   end
 
   def comment
@@ -61,6 +74,14 @@ class ZoneFile
     @records
   end
 
+  def save
+    File.open(@path, 'w') { |f| f.write(output) }
+  end
+
+  def filename
+    @path
+  end
+
   def output
     out = ";$REF #{@ref}\n;$ZONEID #{@id} ; #{@comment}\n"
     out << "$TTL #{@ttl}\n" unless @ttl.nil?
@@ -69,10 +90,10 @@ class ZoneFile
       case record.type
       when "SOA"
         out << "#{record.name} #{record.ttl} #{record.class} #{record.type} #{record.ns} #{record.email} (\n"
-        out << "                     #{(record.address[0].to_s+',').ljust(18,' ')}  ; serial\n"
-        out << "                     #{(record.address[1].to_s+',').ljust(18,' ')}  ; refresh\n"
-        out << "                     #{(record.address[2].to_s+',').ljust(18,' ')}  ; retry\n"
-        out << "                     #{(record.address[3].to_s+',').ljust(18,' ')}  ; expire\n"
+        out << "                     #{record.address[0].to_s.ljust(18,' ')}  ; serial\n"
+        out << "                     #{record.address[1].to_s.ljust(18,' ')}  ; refresh\n"
+        out << "                     #{record.address[2].to_s.ljust(18,' ')}  ; retry\n"
+        out << "                     #{record.address[3].to_s.ljust(18,' ')}  ; expire\n"
         out << "                     #{(record.address[4].to_s+')').ljust(18,' ')}  ; minimum\n"
       when "MX"
         out << "#{record.name.ljust(20,' ')} #{record.ttl.to_s.ljust(9,' ')} #{record.class} MX #{record.priority}  #{record.address}\n"
