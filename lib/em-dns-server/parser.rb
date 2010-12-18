@@ -2,6 +2,7 @@ module DNSServer
 class ZoneFile
 
   VERSION = "0.9.1"
+  SORT_ORDER = { "SOA" => 1, "NS" => 2, "MX" => "3", "A" => 4, "AAAA" => 4, "CNAME" => 6, "PTR" => 7, "TXT" => 8 }
 
   def initialize(filename)
     @path = filename
@@ -31,7 +32,7 @@ class ZoneFile
     until (record = get_next_record()).nil?
       @records << ZoneFileRecord.new(record,self)
     end
-    @records.sort! { |x,y| "#{x.type}#{x.name}" <=> "#{y.type}#{y.name}" }
+    @records.sort! { |x,y| "#{SORT_ORDER[x.type] || 9}#{x.name}" <=> "#{SORT_ORDER[y.type] || 9}#{y.name}" }
   end
 
   def add_record(record)
@@ -83,7 +84,7 @@ class ZoneFile
   end
 
   def output
-    out = ";$REF #{@ref}\n;$ZONEID #{@id} ; #{@comment}\n"
+    out = ";$REF #{@ref}\n;$ZONEID #{@id} ; #{@comment}\n;$UID #{@uid}\n"
     out << "$TTL #{@ttl}\n" unless @ttl.nil?
     out << "$ORIGIN #{@origin}\n"
     records.each do |record|
