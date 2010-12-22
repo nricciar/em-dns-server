@@ -35,6 +35,24 @@ class ZoneFile
     @records.sort! { |x,y| "#{SORT_ORDER[x.type] || 9}#{x.name}" <=> "#{SORT_ORDER[y.type] || 9}#{y.name}" }
   end
 
+  def get_record_groups
+    ret = []
+    tmp = []
+    previous_record = nil
+
+    @records.each do |record|
+      if previous_record == nil || previous_record.type == record.type
+        tmp << record
+      else
+        ret << tmp
+        tmp = [record]
+      end
+      previous_record = record
+    end
+    ret << tmp unless tmp.empty?
+    ret
+  end
+
   def add_record(record)
     @records << ZoneFileRecord.new(record,self)
   end
@@ -73,6 +91,10 @@ class ZoneFile
 
   def records
     @records
+  end
+
+  def records=(val)
+    @records = val
   end
 
   def save
@@ -200,8 +222,50 @@ end
 class ZoneFileRecord
 
   def initialize(record,zone)
+    @errors = []
     @record = record
     @zone = zone
+    if ttl !~ /^([0-9]+)$/
+      @errors << "Invalid ttl"
+    end
+    case type
+    when "SOA"
+    when /^(PTR|NS|CNAME)$/
+      if name !~ /^(|\*|\w+|\s*\@|\.|([-\w\d]+(\.[-\w\d]+)*\.?))$/
+        @errors << "Invalid host name"
+      end
+      if address !~ /^([-\w\d]+((\.[-\w\d]+)*)?\.?|\@)$/
+        @errors << "Invalid address value"
+      end
+    when "A"
+      if name !~ /^(|\*|\*.[-\w\d\.]+|[-\w\d\.]+|\s*\@|\.|[-\w\d]+(((\.[-\w\d]+)*)\.?)?)$/
+        @errors << "Invalid host name"
+      end
+      if address !~ /^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/
+        @errors << "Invalid address value"
+      end
+    when /^(TXT|HINFO|AAAA)$/
+      if name !~ /^(|\*|\s*\@|\.|([-\w\d]+(\.[-\w\d]+)*\.?)?)$/
+        @errors << "Invalid host name"
+      end
+      if address !~ /^(".+?"|[:\d\w]+)$/
+        @errors << "Invalid address value"
+      end
+    when "MX"
+      if name !~ /^(|\*\.[\w\d\.]+|\*|\s*\@|\.|([-\w\d]+(\.[-\w\d]+)*\.?))$/
+        @errors << "Invalid host name"
+      end
+      if address !~ /^([-\w\d]+((\.[-\w\d]+)*)?\.?)$/
+        @errors << "Invalid address value"
+      end
+      if priority !~ /^([0-9]+)$/
+        @errors << "Invalid priority"
+      end
+    end
+  end
+
+  def errors
+    @errors
   end
 
   def name
