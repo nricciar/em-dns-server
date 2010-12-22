@@ -120,6 +120,8 @@ class ZoneFile
         out << "                     #{(record.address[4].to_s+')').ljust(18,' ')}  ; minimum\n"
       when "MX"
         out << "#{record.name.ljust(20,' ')} #{record.ttl.to_s.ljust(9,' ')} #{record.class} MX #{record.priority}  #{record.address}\n"
+      when "SRV"
+        out << "#{record.name.ljust(20,' ')} #{record.ttl.to_s.ljust(9,' ')} #{record.class} SRV #{record.priority} #{record.weight} #{record.port} #{record.address}\n"
       else
         out << "#{record.name.ljust(20,' ')} #{record.ttl.to_s.ljust(9,' ')} #{record.class} #{record.type.ljust(6,' ')} #{record.address}\n"
       end
@@ -151,6 +153,12 @@ class ZoneFile
         record.merge!(fix_ttl_class($5,$7,@ttl))
         soa_data = soa_data.split("\n").collect { |c| c.strip.empty? ? nil : get_ttl_from_string(c.strip) }.compact
         record[:address] = soa_data
+      when /\A(|\*\.[\w\d\.]+|\*|\s*\@|\.|([-\w\d]+(\.[-\w\d]+)*\.?))
+        \s+ ((\d+|IN|HESIOD|CHAOS)\s+)? ((\d+|IN|HESIOD|CHAOS)\s+)?
+        (SRV) \s+ (\d+) \s+ (\d+) \s+ (\d+) \s+ ([-\w\d]+((\.[-\w\d]+)*)?\.?) \s*\n/mxi
+        @data = $'
+        record = { :name => $1, :type => $8, :priority => $9, :weight => $10, :port => $11, :address => $12, :record => $~.to_s }
+        record.merge!(fix_ttl_class($5,$7,@ttl))
       when /\A(|\*\.[\w\d\.]+|\*|\s*\@|\.|([-\w\d]+(\.[-\w\d]+)*\.?))
 	\s+ ((\d+|IN|HESIOD|CHAOS)\s+)? ((\d+|IN|HESIOD|CHAOS)\s+)?
 	(MX) \s+ (\d+) \s+ ([-\w\d]+((\.[-\w\d]+)*)?\.?) \s*\n/mxi
@@ -190,11 +198,11 @@ class ZoneFile
 
   def fix_ttl_class(ct1,ct2,ttl)
     if ct1 =~ /^\d+$/
-      { :ttl => get_ttl_from_string(ct1), :class => (ct2 || 'IN') }
+      { :ttl => get_ttl_from_string(ct1).to_s, :class => (ct2 || 'IN') }
     elsif ct1 =~ /^((\d+)([MHSDW]))$/i
-      { :ttl => get_ttl_from_string(ct1), :class => (ct2 || 'IN') }
+      { :ttl => get_ttl_from_string(ct1).to_s, :class => (ct2 || 'IN') }
     else
-      { :ttl => get_ttl_from_string((ct2 || (ttl || 0))), :class => (ct1 || 'IN') }
+      { :ttl => get_ttl_from_string((ct2 || (ttl || 0))).to_s, :class => (ct1 || 'IN') }
     end
   end
 
@@ -225,8 +233,8 @@ class ZoneFileRecord
     @errors = []
     @record = record
     @zone = zone
-    if ttl !~ /^([0-9]+)$/
-      @errors << "Invalid ttl"
+    if ttl !~ /^\d+$/
+      @errors << "Invalid ttl #{ttl.inspect}"
     end
     case type
     when "SOA"
@@ -278,6 +286,14 @@ class ZoneFileRecord
 
   def full_name
     expanded_address(@record[:name],@zone.origin)
+  end
+
+  def weight
+    @record[:weight]
+  end
+
+  def port
+    @record[:port]
   end
 
   def type
