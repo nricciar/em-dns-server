@@ -11,7 +11,7 @@ class ZoneFile
     @ref = nil
     @comment = nil
     @origin = nil
-    @ttl = 3600
+    @ttl = 0
     @records = []
     @uid = nil
 
@@ -139,7 +139,7 @@ class ZoneFile
         @data = $'
         @origin = $1
         raise NotRecord
-      when /\A\$TTL\s+([A-Z0-9]+)\s*/i
+      when /\A\$TTL\s+([\dDHWSM]+)\s*/i
         @data = $'
         @ttl = get_ttl_from_string($1)
         raise NotRecord
@@ -232,7 +232,8 @@ class ZoneFileRecord
     @errors = []
     @record = record
     @zone = zone
-    if ttl !~ /^\d+$/
+
+    if ttl !~ /^([\dDHWSM]+)$/
       @errors << "Invalid ttl #{ttl.inspect}"
     end
     case type

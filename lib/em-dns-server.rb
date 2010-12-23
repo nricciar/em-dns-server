@@ -151,6 +151,8 @@ module DNSServer
       "#{rr.full_name} #{rr.ttl} #{rr.class} #{rr.type} #{rr.ns} #{rr.email} #{rr.address.join(' ')}"
     when "MX"
       "#{rr.full_name} #{rr.ttl} #{rr.class} #{rr.type} #{rr.priority} #{rr.full_address}"
+    when "SRV"
+      "#{rr.full_name} #{rr.ttl} #{rr.class} #{rr.type} #{rr.priority} #{rr.address}"
     else
       "#{name_override || rr.full_name} #{rr.ttl} #{rr.class} #{rr.type} #{rr.full_address}"
     end
