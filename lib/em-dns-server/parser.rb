@@ -146,13 +146,12 @@ class ZoneFile
       when /\A(|\*\.[\w\d\.]+|\*|\s*\@|\.|([-\w\d]+(\.[-\w\d]+)*\.?)) 
 	\s+ (([\dDdHhWw]+|IN|HESIOD|CHAOS)\s+)? (([\dDdHhWw]+|IN|HESIOD|CHAOS)\s+)? 
 	(SOA) \s+ ([-\w\d]+((\.[-\w\d]+)*)?\.?) \s+ ([-\w\d]+((\.[-\w\d]+)*)?\.?) 
-	\s+ \( \s+ ([^)]+) \) \s*/mxi
+	\s+ \( \s* ([\dDHWSM]+) \s+ ([\dDHWSM]+) \s+ ([\dDHWSM]+) \s+ ([\dDHWSM]+) \s+ ([\dDHWSM]+) \s* \) \s*/mxi
         @data = $'
         soa_data = $15
-        record = { :name => $1, :type => "SOA", :ns => $9, :email => $12, :record => $~.to_s }
+        record = { :name => $1, :type => "SOA", :ns => $9, :email => $12, :record => $~.to_s, :address => [$15,$16,$17,$18,$19] }
         record.merge!(fix_ttl_class($5,$7,@ttl))
-        soa_data = soa_data.split("\n").collect { |c| c.strip.empty? ? nil : get_ttl_from_string(c.strip) }.compact
-        record[:address] = soa_data
+        record[:address] = record[:address].collect { |a| get_ttl_from_string(a) }
       when /\A(|\*\.[\w\d\.]+|\*|\s*\@|\.|([-\w\d]+(\.[-\w\d]+)*\.?))
         \s+ ((\d+|IN|HESIOD|CHAOS)\s+)? ((\d+|IN|HESIOD|CHAOS)\s+)?
         (SRV) \s+ (\d+) \s+ (\d+) \s+ (\d+) \s+ ([-\w\d]+((\.[-\w\d]+)*)?\.?) \s*\n/mxi
