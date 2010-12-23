@@ -10,7 +10,7 @@ module DNSServer
 
   PLUGIN_PATH = File.join(File.dirname(__FILE__),'..')
   ZONE_FILES = File.expand_path(ENV['ZONE_FILES'] || File.join(PLUGIN_PATH,'zones'))
-  VERSION = "0.3.0"
+  VERSION = "0.5.0"
   
   @@ZONEMAP = {}
 
