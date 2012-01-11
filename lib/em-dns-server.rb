@@ -10,7 +10,7 @@ module DNSServer
 
   PLUGIN_PATH = File.join(File.dirname(__FILE__),'..')
   ZONE_FILES = File.expand_path(ENV['ZONE_FILES'] || File.join(PLUGIN_PATH,'zones'))
-  VERSION = "0.5.0"
+  VERSION = "0.5.1"
   
   @@ZONEMAP = {}
 
@@ -107,7 +107,7 @@ module DNSServer
             success = true
           end
           raise DnsRedirect, address
-        elsif success == false && rr.name =~ /\*/
+        elsif success == false && rr.name =~ /\*/  && rr.type == question.qtype.to_s
           # possible wildcard match
           tmp_query = rr.name.gsub(/\*/,'([\w\-\.]+)')
           tmp_name = question.qname.to_s
